@@ -1,5 +1,8 @@
 import tailwindcss from "@tailwindcss/vite";
 
+// @ts-ignore - process.env is available at build time
+const authSecret = process.env.AUTH_SECRET || '';
+
 export default defineNuxtConfig({
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
@@ -8,6 +11,17 @@ export default defineNuxtConfig({
     // This module helps mock Cloudflare bindings (like D1) in development
     'nitro-cloudflare-dev',
   ],
+
+  // Runtime configuration for environment variables
+  runtimeConfig: {
+    // Private keys (server-side only)
+    authSecret: authSecret,
+
+    // Public keys (exposed to client)
+    public: {
+      apiBase: ''
+    }
+  },
 
   // Set the Nitro preset for Cloudflare Pages deployment
   nitro: {
@@ -24,6 +38,26 @@ export default defineNuxtConfig({
         ],
       },
     },
+  },
+
+  // Security headers
+  routeRules: {
+    '/**': {
+      headers: {
+        'X-Frame-Options': 'DENY',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      }
+    }
+  },
+
+  app: {
+    head: {
+      link: [
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }
+      ]
+    }
   },
 
   vite: {

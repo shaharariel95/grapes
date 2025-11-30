@@ -2,7 +2,10 @@ name = "grapes"
 compatibility_date = "2025-11-28"
 pages_build_output_dir = ".output/public"
 
+# D1 Database Configuration
 [[d1_databases]]
 binding = "DB"
 database_name = "grapes_db"
+# For production, replace with your actual D1 database ID from Cloudflare dashboard
+# Get this by running: wrangler d1 list
 database_id = "local-db-id"

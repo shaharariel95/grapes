@@ -1,7 +1,9 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 import { useD1 } from '../../db/d1'
+import { requireAuth } from '../../utils/auth'
 
 export default defineEventHandler(async (event) => {
+    await requireAuth(event)
     const db = useD1(event)
     const body = await readBody(event)
 

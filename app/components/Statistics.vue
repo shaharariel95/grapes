@@ -6,12 +6,14 @@
     <div class="grid grid-cols-2 gap-4">
       <div class="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800">
         <div class="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">סה״כ אוכל היום</div>
-        <div class="text-2xl font-bold text-blue-700 dark:text-blue-300">{{ todayTotalFood }} <span class="text-sm font-normal">מ״ל</span></div>
+        <div class="text-2xl font-bold text-blue-700 dark:text-blue-300">{{ todayTotalFood }} <span
+            class="text-sm font-normal">מ״ל</span></div>
       </div>
       <div class="bg-green-50 dark:bg-green-900/20 p-4 rounded-2xl border border-green-100 dark:border-green-800">
         <div class="flex items-center justify-between mb-1">
           <div class="text-xs text-green-600 dark:text-green-400 font-medium">ממוצע גלוקוז</div>
-          <select v-model.number="avgDays" class="text-xs px-2 py-1 rounded-lg bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">
+          <select v-model.number="avgDays"
+            class="text-xs px-2 py-1 rounded-lg bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">
             <option :value="3">3 ימים</option>
             <option :value="7">7 ימים</option>
             <option :value="14">14 ימים</option>
@@ -44,12 +46,12 @@
         <h3 class="font-bold text-gray-700 dark:text-gray-200">גלוקוז לפי מזון</h3>
       </div>
 
-      <div class="mb-4 flex flex-wrap gap-2">
+      <!-- <div class="mb-4 flex flex-wrap gap-2">
         <label v-for="food in foodOptions" :key="food" class="inline-flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" :value="food" v-model="selectedFoods" class="rounded text-blue-600 focus:ring-blue-500 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600" />
           <span class="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-xs font-medium">{{ food }}</span>
         </label>
-      </div>
+      </div> -->
 
       <div class="chart-container">
         <canvas ref="perFoodChart" class="chart-canvas"></canvas>
@@ -92,11 +94,11 @@ const todayTotalFood = computed(() => {
 const avgGlucose7Days = computed(() => {
   const now = new Date()
   const daysAgo = new Date(now.setDate(now.getDate() - avgDays.value))
-  
+
   const readings = props.entries
     .filter(e => new Date(e.time) >= daysAgo && e.glucometerReading)
     .map(e => Number(e.glucometerReading))
-  
+
   if (readings.length === 0) return '-'
   const sum = readings.reduce((a, b) => a + b, 0)
   return Math.round(sum / readings.length)
@@ -145,7 +147,7 @@ function buildCharts() {
 function buildDailyIntakeChart() {
   if (!dailyIntakeChart.value) return
   const ctx = dailyIntakeChart.value.getContext('2d')
-  
+
   // Group by day (last 14 days)
   const days = {}
   const now = new Date()
@@ -166,7 +168,7 @@ function buildDailyIntakeChart() {
   const data = Object.values(days)
 
   if (dailyIntakeInstance) dailyIntakeInstance.destroy()
-  
+
   dailyIntakeInstance = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -193,7 +195,7 @@ function buildComparisonChart() {
 
   const sorted = [...props.entries].sort((a, b) => new Date(a.time) - new Date(b.time))
   const labels = sorted.map(e => new Date(e.time).toLocaleString('he-IL', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }))
-  
+
   const glucoData = sorted.map(e => e.glucometerReading)
   const sensorData = sorted.map(e => e.sensor)
 
@@ -269,9 +271,9 @@ function buildPerFoodChart() {
 
   perFoodInstance = new Chart(ctx, {
     type: 'line',
-    data: { 
-      labels: sorted.map(e => new Date(e.time).toLocaleString('he-IL', { month: 'numeric', day: 'numeric', hour: '2-digit', minute:'2-digit' })), 
-      datasets 
+    data: {
+      labels: sorted.map(e => new Date(e.time).toLocaleString('he-IL', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })),
+      datasets
     },
     options: {
       responsive: true,
