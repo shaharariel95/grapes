@@ -6,17 +6,20 @@ const RATE_LIMIT_WINDOW = 15 * 60 * 1000 // 15 minutes
 const MAX_ATTEMPTS = 5
 const CLEANUP_INTERVAL = 60 * 60 * 1000 // 1 hour
 
-// Cleanup old entries periodically
-setInterval(() => {
+
+// Cleanup function to remove old entries
+function cleanupOldEntries() {
   const now = Date.now()
   for (const [key, data] of loginAttempts.entries()) {
     if (now - data.firstAttempt > RATE_LIMIT_WINDOW) {
       loginAttempts.delete(key)
     }
   }
-}, CLEANUP_INTERVAL)
+}
+
 
 export function checkRateLimit(identifier) {
+  cleanupOldEntries()
   const now = Date.now()
   const attempts = loginAttempts.get(identifier)
 
@@ -57,5 +60,6 @@ export function checkRateLimit(identifier) {
 }
 
 export function resetRateLimit(identifier) {
+  cleanupOldEntries()
   loginAttempts.delete(identifier)
 }

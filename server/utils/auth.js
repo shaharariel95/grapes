@@ -1,42 +1,25 @@
+// server/utils/auth.js
+
 import { createError, getCookie, setCookie, deleteCookie } from 'h3'
 
+// --- CONSTANTS ---
 const AUTH_COOKIE_NAME = 'auth_token'
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7 // 7 days
 
-// Get the auth secret from runtime config
-function getAuthSecret(event) {
-  const config = useRuntimeConfig(event)
-  const secret = config.authSecret
-  
-  // In production, AUTH_SECRET must be set to a secure value
-  if (!secret) {
-    throw new Error('AUTH_SECRET environment variable is required')
-  }
-  
-  return secret
-}
+// --- HELPER FUNCTIONS ---
 
 // Simple password hashing using Web Crypto API (available in Cloudflare Workers)
 async function hashPassword(password) {
   const msgBuffer = new TextEncoder().encode(password)
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
   const hashArray = Array.from(new Uint8Array(hashBuffer))
+  // Converts hash array to a hex string
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-export async function verifyPassword(plainPassword, hashedPassword) {
-  const hash = await hashPassword(plainPassword)
-  return hash === hashedPassword
-}
-
-// For creating the default user password hash if needed manually
-export async function generateHash(password) {
-    return await hashPassword(password)
-}
-
 // HMAC-SHA256 signing using Web Crypto API
-async function signData(data, event) {
-  const secret = getAuthSecret(event)
+// ❗ Takes the secret string directly, avoiding runtime calls in global scope.
+async function signData(data, secret) {
   const encoder = new TextEncoder()
   const key = await crypto.subtle.importKey(
     'raw',
@@ -55,12 +38,43 @@ async function signData(data, event) {
 }
 
 // Verify HMAC signature
-async function verifySignature(data, signature, event) {
-  const expectedSignature = await signData(data, event)
+async function verifySignature(data, signature, secret) {
+  const expectedSignature = await signData(data, secret)
   return expectedSignature === signature
 }
 
+
+// --- EXPORTED FUNCTIONS ---
+
+/**
+ * Retrieves the Auth Secret from runtime config and validates its existence.
+ */
+function getAuthSecret(event) {
+  // ✅ FIX: useRuntimeConfig() is called inside a function that requires 
+  // the event, ensuring it only runs during a request lifecycle.
+  const config = useRuntimeConfig(event)
+  const secret = config.authSecret
+  
+  if (!secret) {
+    throw new Error('AUTH_SECRET environment variable is required in nuxt.config.js')
+  }
+  
+  return secret
+}
+
+
+export async function verifyPassword(plainPassword, hashedPassword) {
+  const hash = await hashPassword(plainPassword)
+  return hash === hashedPassword
+}
+
+export async function generateHash(password) {
+  return await hashPassword(password)
+}
+
 export async function setAuthCookie(event, user) {
+    const secret = getAuthSecret(event) // 🔑 Get secret inside the request handler
+    
     // Create payload with expiration time
     const expiresAt = Date.now() + (COOKIE_MAX_AGE * 1000)
     const payload = JSON.stringify({ 
@@ -70,7 +84,7 @@ export async function setAuthCookie(event, user) {
     })
     
     // Sign the payload with HMAC
-    const signature = await signData(payload, event)
+    const signature = await signData(payload, secret) // 🔑 Pass secret to the helper
     const token = btoa(payload) + '.' + signature
 
     setCookie(event, AUTH_COOKIE_NAME, token, {
@@ -87,12 +101,14 @@ export async function getAuthUser(event) {
     if (!token) return null
 
     try {
+        const secret = getAuthSecret(event) // 🔑 Get secret inside the request handler
+        
         const [b64Payload, signature] = token.split('.')
         if (!b64Payload || !signature) return null
 
         // Verify signature
         const payload = atob(b64Payload)
-        const isValid = await verifySignature(payload, signature, event)
+        const isValid = await verifySignature(payload, signature, secret) // 🔑 Pass secret to the helper
         if (!isValid) return null
 
         const data = JSON.parse(payload)
@@ -104,6 +120,8 @@ export async function getAuthUser(event) {
 
         return { id: data.id, username: data.username }
     } catch (e) {
+        // Log the error in production for debugging, but return null to client
+        console.error('Failed to parse or verify auth token:', e)
         return null
     }
 }
@@ -122,4 +140,3 @@ export async function requireAuth(event) {
     }
     return user
 }
-
