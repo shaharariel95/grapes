@@ -2,13 +2,31 @@
   <div class="space-y-4">
   <div class="flex items-center justify-between">
     <h2 class="text-2xl font-bold mb-6">היסטוריית האכלה</h2>
-    <button
-      @click="downloadCSV"
-      class="mb-6 p-2 bg-slate-300 hover:bg-slate-600 text-white rounded-lg transition-colors"
-      aria-label="הורד CSV"
-    >
-      הורד CSV
-    </button>
+    <div class="flex gap-2 mb-6">
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".csv"
+        class="hidden"
+        @change="processFile"
+      >
+      <button
+        @click="handleImport"
+        class="p-2 bg-slate-300 hover:bg-slate-600 text-white rounded-lg transition-colors flex items-center gap-2"
+        aria-label="ייבא CSV"
+      >
+        <Upload :size="20" />
+        <span>ייבא CSV</span>
+      </button>
+      <button
+        @click="downloadCSV"
+        class="p-2 bg-slate-300 hover:bg-slate-600 text-white rounded-lg transition-colors flex items-center gap-2"
+        aria-label="הורד CSV"
+      >
+        <Download :size="20" />
+        <span>הורד CSV</span>
+      </button>
+    </div>
   </div>
 
     <div v-if="entries.length === 0" class="text-center py-12 text-gray-500 dark:text-gray-400">
@@ -36,7 +54,7 @@
               <Edit2 :size="16" />
             </button>
             <button
-              @click="$emit('delete-entry', entry.id)"
+              @click="handleDeleteClick(entry.id)"
               class="p-2 bg-slate-300 hover:bg-slate-600 text-white rounded-2xl transition-colors"
               aria-label="מחק רשומה"
             >
@@ -96,18 +114,46 @@
         </div>
       </div>
     </div>
+
+    <ConfirmModal
+      :is-open="showDeleteModal"
+      title="מחיקת רשומה"
+      message="האם אתה בטוח שברצונך למחוק רשומה זו? פעולה זו לא ניתנת לביטול."
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
+
+    <AlertModal
+      :is-open="showAlertModal"
+      :title="alertTitle"
+      :message="alertMessage"
+      @close="closeAlert"
+    />
+
+    <ConfirmModal
+      :is-open="showImportWarningModal"
+      title="אזהרת ייבוא"
+      :message="importWarningMessage"
+      confirm-text="המשך"
+      confirm-color="blue"
+      :show-dont-ask="false"
+      @confirm="confirmImport"
+      @cancel="cancelImport"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { Clock, Milk, Activity, Utensils, Scale, Edit2, Trash2, Baby, Droplet, FileText, Radio } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { useAppEntries } from '../composables/useAppEntries'
+import { Clock, Milk, Activity, Utensils, Scale, Edit2, Trash2, Baby, Droplet, FileText, Radio, Upload, Download } from 'lucide-vue-next'
+// Components are auto-imported by Nuxt
 
 const props = defineProps({
   entries: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['edit-entry', 'delete-entry'])
+const emit = defineEmits(['edit-entry'])
 
 const sortedEntries = computed(() => {
   return [...props.entries].sort((a, b) => new Date(b.time) - new Date(a.time))
@@ -134,10 +180,12 @@ const escapeCSV = (val) => {
 }
 
 const buildCSV = () => {
-  const headers = ['id', 'זמן', 'האכלה (מ״ל)', 'חיישן', 'גלוקוז', 'טיפטוף', 'סוג', 'הערות']
+  const headers = ['id', 'זמן', 'האכלה (מ״ל)', 'חיישן', 'גלוקוז', 'טיפטוף', 'סוג', 'הערות', 'iso_time']
   const rows = [headers.map(escapeCSV).join(',')]
+  
+  const entriesToExport = sortedEntries.value
 
-  for (const e of props.entries) {
+  for (const e of entriesToExport) {
     const row = [
       e.id ?? '',
       formatDateTime(e.time),
@@ -146,7 +194,8 @@ const buildCSV = () => {
       e.glucometerReading ?? '',
       e.drip ?? '',
       e.nutritionType ?? '',
-      e.extra ?? ''
+      e.extra ?? '',
+      e.time ?? ''
     ].map(escapeCSV).join(',')
 
     rows.push(row)
@@ -157,8 +206,8 @@ const buildCSV = () => {
 }
 
 const downloadCSV = () => {
-  if (!props.entries || props.entries.length === 0) {
-    alert('אין נתונים להורדה')
+  if (!sortedEntries.value || sortedEntries.value.length === 0) {
+    showAlert('שגיאה', 'אין נתונים להורדה')
     return
   }
 
@@ -173,5 +222,184 @@ const downloadCSV = () => {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+
+// Import Logic
+const fileInput = ref(null)
+const { importEntries } = useAppEntries()
+
+const handleImport = () => {
+  fileInput.value.click()
+}
+
+const processFile = (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = async (e) => {
+    try {
+      const text = e.target.result
+      
+      const rows = text.split('\n').map(row => row.trim()).filter(row => row)
+      
+      // Remove BOM if present
+      if (rows[0].charCodeAt(0) === 0xFEFF) {
+        rows[0] = rows[0].slice(1)
+      }
+
+      // Parse headers
+      const headers = rows[0].split(',').map(h => h.replace(/"/g, '').trim())
+      
+      // Find column indices dynamically
+      const isoTimeIndex = headers.indexOf('iso_time')
+      const feedingIndex = headers.findIndex(h => h.includes('האכלה'))
+      const sensorIndex = headers.findIndex(h => h.includes('חיישן'))
+      const glucoseIndex = headers.findIndex(h => h.includes('גלוקוז'))
+      const dripIndex = headers.findIndex(h => h.includes('טיפטוף'))
+      const typeIndex = headers.findIndex(h => h.includes('סוג'))
+      const notesIndex = headers.findIndex(h => h.includes('הערות'))
+      
+      // Skip header row
+      const dataRows = rows.slice(1)
+      
+      const newEntries = dataRows.map((row) => {
+        // Handle quoted values (basic CSV parser)
+        let values = []
+        let inQuote = false
+        let currentValue = ''
+        
+        for (let i = 0; i < row.length; i++) {
+            const char = row[i]
+            if (char === '"') {
+                inQuote = !inQuote
+            } else if (char === ',' && !inQuote) {
+                values.push(currentValue)
+                currentValue = ''
+            } else {
+                currentValue += char
+            }
+        }
+        values.push(currentValue)
+        
+        // Clean up quotes
+        values = values.map(v => {
+            v = v.trim()
+            if (v.startsWith('"') && v.endsWith('"')) {
+                v = v.slice(1, -1).replace(/""/g, '"')
+            }
+            return v
+        })
+
+        let time = null
+        if (isoTimeIndex !== -1 && values[isoTimeIndex]) {
+            time = values[isoTimeIndex]
+        }
+
+        return {
+            time: time,
+            feedingAmount: feedingIndex !== -1 ? (parseFloat(values[feedingIndex]) || null) : null,
+            sensor: sensorIndex !== -1 ? (parseFloat(values[sensorIndex]) || null) : null,
+            glucometerReading: glucoseIndex !== -1 ? (parseFloat(values[glucoseIndex]) || null) : null,
+            drip: dripIndex !== -1 ? (parseFloat(values[dripIndex]) || null) : null,
+            nutritionType: typeIndex !== -1 ? (values[typeIndex] || null) : null,
+            extra: notesIndex !== -1 ? (values[notesIndex] || null) : null
+        }
+      })
+      
+      // Filter out entries where time parsing failed
+      const validEntries = newEntries.filter(e => e.time)
+      
+      if (validEntries.length < newEntries.length) {
+          pendingImportEntries.value = validEntries
+          importWarningMessage.value = `הצלחתנו לפענח רק ${validEntries.length} מתוך ${newEntries.length} שורות. האם להמשיך?`
+          showImportWarningModal.value = true
+          event.target.value = ''
+          return
+      }
+
+      if (validEntries.length > 0) {
+          await importEntries(validEntries)
+          showAlert('הצלחה', 'הייבוא הושלם בהצלחה!')
+      } else {
+          showAlert('שגיאה', 'לא נמצאו רשומות תקינות לייבוא.')
+      }
+      
+    } catch (err) {
+      console.error('Import error:', err)
+      showAlert('שגיאה', 'שגיאה בייבוא הקובץ: ' + err.message)
+    } finally {
+      event.target.value = ''
+    }
+  }
+  reader.readAsText(file)
+}
+
+const pendingImportEntries = ref([])
+const showImportWarningModal = ref(false)
+const importWarningMessage = ref('')
+
+const confirmImport = async () => {
+    showImportWarningModal.value = false
+    if (pendingImportEntries.value.length > 0) {
+        try {
+            await importEntries(pendingImportEntries.value)
+            showAlert('הצלחה', 'הייבוא הושלם בהצלחה!')
+        } catch (err) {
+            showAlert('שגיאה', 'שגיאה בייבוא הקובץ: ' + err.message)
+        }
+        pendingImportEntries.value = []
+    }
+}
+
+const cancelImport = () => {
+    showImportWarningModal.value = false
+    pendingImportEntries.value = []
+}
+
+// Delete Logic
+const showDeleteModal = ref(false)
+const itemToDelete = ref(null)
+const { deleteConfirmationIgnored, deleteEntry: deleteEntryApi } = useAppEntries()
+
+const handleDeleteClick = (id) => {
+  if (deleteConfirmationIgnored.value) {
+    deleteEntryApi(id)
+  } else {
+    itemToDelete.value = id
+    showDeleteModal.value = true
+  }
+}
+
+const confirmDelete = (dontAskAgain) => {
+  if (dontAskAgain) {
+    deleteConfirmationIgnored.value = true
+  }
+  if (itemToDelete.value) {
+    deleteEntryApi(itemToDelete.value)
+  }
+  showDeleteModal.value = false
+  itemToDelete.value = null
+}
+
+const cancelDelete = () => {
+  showDeleteModal.value = false
+  itemToDelete.value = null
+}
+
+// Alert Logic
+const showAlertModal = ref(false)
+const alertTitle = ref('')
+const alertMessage = ref('')
+
+const showAlert = (title, message) => {
+  alertTitle.value = title
+  alertMessage.value = message
+  showAlertModal.value = true
+}
+
+const closeAlert = () => {
+  showAlertModal.value = false
 }
 </script>

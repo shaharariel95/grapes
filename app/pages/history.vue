@@ -1,7 +1,7 @@
 <template>
   <div>
     <HistoryList
-      :entries="entries.value"
+      :entries="entries"
       @edit-entry="startEdit"
       @delete-entry="deleteEntry"
     />
@@ -24,8 +24,6 @@ useHead({
 })
 
 onMounted(() => {
-//   entries = fetchEntries()
-const data = fetchEntries();
-entries.value = data.entries;
+  fetchEntries()
 })
 </script>
